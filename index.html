@@ -1,0 +1,1080 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pravoúhlý trojúhelník</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=STIX+Two+Text:ital,wght@0,400;0,600;1,400;1,600&display=swap">
+<style>
+/* Layout: záhlaví jako rohové razítko výkresu → rýsovací plocha (milimetrový papír) s poli přímo u stran a vrcholů → číslovaný postup výpočtu v mřížce karet */
+:root{
+  --bg:#e8edf0;          /* plocha stránky */
+  --paper:#fbfcfd;       /* papír */
+  --grid:#e3eaef;        /* jemná mřížka 1 mm */
+  --grid-major:#cbd7e0;  /* hrubá mřížka 5 mm */
+  --ink:#16202a;         /* tuš */
+  --muted:#5b6a78;
+  --line:#d5dee5;
+  --line-strong:#9aacba;
+  --given:#1d55c0;       /* zadané – modrá */
+  --given-bg:#eaf0fc;
+  --calc:#08735f;        /* dopočítané – zelená */
+  --calc-bg:#e2f2ed;
+  --bad:#bd3125;         /* chyba */
+  --bad-bg:#fbe9e6;
+  --focus:#e39a12;       /* zvýraznění */
+  --tri:rgba(29,85,192,.06);
+  --font-display:"Barlow Condensed","Arial Narrow","Helvetica Neue",sans-serif;
+  --font-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-math:"STIX Two Text","Cambria Math","Times New Roman",serif;
+  --fw:146px;            /* šířka pole v náčrtu */
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1317; --paper:#141b21; --grid:#1a242c; --grid-major:#24323d;
+    --ink:#dde6ed; --muted:#93a4b2; --line:#26323c; --line-strong:#4b5e6d;
+    --given:#7ea9ff; --given-bg:#172340; --calc:#4ccab0; --calc-bg:#11302a;
+    --bad:#ff7d6e; --bad-bg:#3b1a16; --focus:#f2b44c; --tri:rgba(126,169,255,.07);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1317; --paper:#141b21; --grid:#1a242c; --grid-major:#24323d;
+  --ink:#dde6ed; --muted:#93a4b2; --line:#26323c; --line-strong:#4b5e6d;
+  --given:#7ea9ff; --given-bg:#172340; --calc:#4ccab0; --calc-bg:#11302a;
+  --bad:#ff7d6e; --bad-bg:#3b1a16; --focus:#f2b44c; --tri:rgba(126,169,255,.07);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--font-body)}
+button,input,select{font:inherit;color:inherit}
+.app{max-width:1200px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:18px}
+
+/* ---------- Razítko (záhlaví) ---------- */
+.razitko{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;background:var(--paper);border:1.5px solid var(--ink);border-radius:3px}
+.rz{display:flex;flex-direction:column;justify-content:center;gap:5px;padding:10px 14px;border-left:1px solid var(--ink);min-width:0}
+.rz:first-child{border-left:0}
+.rz-cap{font:600 10.5px/1 var(--font-body);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+h1{margin:0;font:700 clamp(28px,3.8vw,40px)/1 var(--font-display);letter-spacing:.02em;text-transform:uppercase;text-wrap:balance}
+.rz-sub{margin:0;color:var(--muted);font-size:13.5px}
+.rz input,.rz select{background:var(--bg);border:1px solid var(--line-strong);border-radius:4px;padding:5px 8px;font-size:15px;min-width:0;width:100%}
+.rz input:focus-visible,.rz select:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+#unit{width:6.5em}
+@media (max-width:760px){
+  .razitko{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .rz-title{grid-column:1/-1;border-bottom:1px solid var(--ink)}
+  .rz:nth-child(2){border-left:0}
+  #unit{width:100%}
+}
+
+/* ---------- Výkres ---------- */
+.sheet{background:var(--paper);border:1.5px solid var(--ink);border-radius:3px;overflow:hidden}
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;padding:8px 10px;border-bottom:1px solid var(--line-strong)}
+.tgroup{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.tb{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:5px 10px;background:var(--bg);border:1px solid var(--line-strong);border-radius:4px;font-size:13.5px;font-weight:500;cursor:pointer;white-space:nowrap}
+.tb:hover{border-color:var(--ink)}
+.tb:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.tb[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.tb:disabled{opacity:.45;cursor:default}
+.tb svg{width:16px;height:16px;flex:none}
+.tb-quiet{background:transparent}
+#rot{width:130px;accent-color:var(--ink)}
+#rotOut{font-variant-numeric:tabular-nums;min-width:3.2em;font-size:13.5px;color:var(--muted)}
+.chk{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;cursor:pointer;user-select:none}
+.chk input{accent-color:var(--calc);width:16px;height:16px}
+
+.board{position:relative;height:clamp(420px,62vh,580px);overflow:hidden;cursor:grab;user-select:none;-webkit-user-select:none}
+.board.dragging{cursor:grabbing}
+.board svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.board-hint{position:absolute;right:10px;bottom:8px;font-size:12px;color:var(--muted);pointer-events:none;background:var(--paper);padding:1px 6px;border-radius:3px}
+@media (hover:none){.board-hint{display:none}}
+
+/* SVG prvky */
+.g1{fill:none;stroke:var(--grid);stroke-width:1}
+.g2{fill:none;stroke:var(--grid-major);stroke-width:1}
+.tri{fill:var(--tri)}
+.side{stroke:var(--ink);stroke-width:2.2;stroke-linecap:round;transition:stroke-width .15s}
+.dim{color:var(--line-strong)}
+.dim line{stroke:currentColor;stroke-width:1}
+.dim polygon{fill:currentColor}
+.arc{color:var(--line-strong)}
+.arc .sec{fill:currentColor;fill-opacity:.12;transition:fill-opacity .15s}
+.arc .arcl{fill:none;stroke:currentColor;stroke-width:1.6}
+.st-given{color:var(--given)}
+.st-calc,.st-ok{color:var(--calc)}
+.st-bad{color:var(--bad)}
+.rmark{fill:none;stroke:var(--ink);stroke-width:1.2}
+.vlab{fill:var(--ink);font:600 14px var(--font-body);text-anchor:middle;dominant-baseline:central}
+.hgt{stroke:var(--calc);stroke-width:1.4;stroke-dasharray:5 4}
+.hmark{fill:none;stroke:var(--calc);stroke-width:1}
+.hlab{fill:var(--calc);font:14px var(--font-math)}
+.hdot{fill:var(--calc)}
+.board[data-hl="a"] .side.k-a,.board[data-hl="b"] .side.k-b,.board[data-hl="c"] .side.k-c{stroke:var(--focus);stroke-width:4}
+.board[data-hl="a"] .dim.k-a line,.board[data-hl="b"] .dim.k-b line,.board[data-hl="c"] .dim.k-c line{stroke-width:2}
+.board[data-hl="al"] .arc.k-al .sec,.board[data-hl="be"] .arc.k-be .sec{fill-opacity:.32}
+.board[data-hl="al"] .arc.k-al .arcl,.board[data-hl="be"] .arc.k-be .arcl{stroke-width:2.6}
+
+/* Pole v náčrtu */
+.field{--f-line:var(--line-strong);--f-ink:var(--ink);--f-bg:var(--paper);
+  position:absolute;left:-999px;top:-999px;transform:translate(-50%,-50%);width:var(--fw);
+  display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;column-gap:4px;
+  padding:4px 8px 3px;background:var(--f-bg);border:1.5px solid var(--f-line);border-radius:6px;
+  cursor:auto;user-select:text;-webkit-user-select:text;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.field[data-state="given"],.field[data-state="ok"]{--f-line:var(--given);--f-ink:var(--given);--f-bg:var(--given-bg)}
+.field[data-state="calc"]{--f-line:var(--calc);--f-ink:var(--calc);--f-bg:var(--calc-bg);border-style:dashed}
+.field[data-state="bad"]{--f-line:var(--bad);--f-ink:var(--bad);--f-bg:var(--bad-bg)}
+.field:focus-within{outline:2px solid var(--focus);outline-offset:2px}
+.field .lab{font:italic 19px/1 var(--font-math);color:var(--f-ink);white-space:nowrap;cursor:text}
+.field input{width:100%;min-width:0;border:0;background:transparent;padding:3px 2px;outline:none;text-align:right;
+  font:600 16px/1.2 var(--font-body);font-variant-numeric:tabular-nums;color:var(--f-ink)}
+.field input::placeholder{color:var(--muted);font-weight:400;opacity:.7}
+.field .unit{font-size:13px;color:var(--muted);white-space:nowrap}
+.field .note{grid-column:1/-1;margin-top:2px;padding-top:2px;border-top:1px dashed var(--line);font-size:12px;line-height:1.35;color:var(--f-ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.field[data-state="empty"] .note{color:var(--muted)}
+.field .note i{font-family:var(--font-math);font-size:1.12em}
+.field .note sup{font-size:.7em;vertical-align:.5em;line-height:0}
+@media (max-width:600px){
+  :root{--fw:104px}
+  .field{padding:3px 5px 2px;column-gap:2px}
+  .field .lab{font-size:16px}
+  .field .unit{font-size:11px}
+  .field .note{font-size:10.5px}
+}
+
+.statusbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 18px;padding:9px 12px;border-top:1px solid var(--line-strong)}
+#status{margin:0;font-size:14px;min-width:0;flex:1 1 320px}
+#status .err{color:var(--bad);font-weight:500}
+#status .tag{display:inline-block;font:600 10.5px/1 var(--font-body);letter-spacing:.1em;text-transform:uppercase;padding:3px 6px;border-radius:3px;background:var(--ink);color:var(--paper);margin-right:6px;vertical-align:1px}
+#status .muted{color:var(--muted)}
+.legend{display:flex;gap:14px;margin:0;padding:0;list-style:none;font-size:12.5px;color:var(--muted)}
+.legend li{display:flex;align-items:center;gap:6px}
+.sw{width:18px;height:12px;border-radius:3px;border:1.5px solid}
+.sw-given{border-color:var(--given);background:var(--given-bg)}
+.sw-calc{border-color:var(--calc);background:var(--calc-bg);border-style:dashed}
+.sw-bad{border-color:var(--bad);background:var(--bad-bg)}
+
+/* ---------- Postup výpočtu ---------- */
+.calc{display:flex;flex-direction:column;gap:12px}
+.calc-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 16px}
+h2{margin:0;font:700 26px/1.1 var(--font-display);letter-spacing:.02em;text-transform:uppercase}
+.h2-sub{font-size:21px;margin-top:10px}
+.given{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+.given-lbl{font:600 10.5px/1 var(--font-body);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-right:4px}
+.chip{display:inline-flex;align-items:baseline;gap:4px;padding:3px 10px;border-radius:999px;border:1.5px solid;font-size:14px;font-variant-numeric:tabular-nums}
+.chip i{font-family:var(--font-math);font-size:1.1em}
+.chip-given{border-color:var(--given);color:var(--given);background:var(--given-bg)}
+.chip-ok{border-color:var(--calc);color:var(--calc);background:var(--calc-bg)}
+.chip-bad{border-color:var(--bad);color:var(--bad);background:var(--bad-bg)}
+.cards{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
+@media (max-width:420px){.cards{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:5px;padding:12px 14px 8px;min-width:0}
+.card-head{display:flex;align-items:baseline;gap:10px;margin-bottom:4px;flex-wrap:wrap}
+.no{font:700 24px/1 var(--font-display);color:var(--calc);min-width:.9em}
+.card h3{margin:0;font:600 15.5px/1.3 var(--font-body)}
+.card h3 i{font-family:var(--font-math);font-size:1.15em;font-weight:600}
+.why{margin-left:auto;font-size:12.5px;color:var(--muted);text-align:right}
+.row{display:grid;grid-template-columns:78px minmax(0,1fr);align-items:center;gap:10px;padding:4px 0;border-top:1px solid var(--line)}
+.lbl{font:600 10.5px/1.2 var(--font-body);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.mx{font:18px/1.35 var(--font-math);white-space:nowrap;overflow-x:auto;overflow-y:hidden;padding:5px 0;scrollbar-width:thin;font-variant-numeric:lining-nums}
+.row.res .mx{color:var(--calc);font-weight:600}
+.empty-note{margin:0;padding:18px;border:1px dashed var(--line-strong);border-radius:5px;color:var(--muted);text-align:center}
+
+/* Sazba matematiky bez knihoven */
+.mx i,.hl i{font-style:italic}
+.fn{font-style:normal}
+sup{font-size:.68em;vertical-align:.55em;line-height:0}
+sub{font-size:.68em;vertical-align:-.28em;line-height:0}
+.fr{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;margin:0 .12em;font-size:.9em;line-height:1.2}
+.fr-n{padding:0 .25em .06em;border-bottom:1px solid currentColor}
+.fr-d{padding:.06em .25em 0}
+.sq{display:inline-flex;align-items:stretch;white-space:nowrap}
+.sq-r{font-size:1.12em;line-height:1;align-self:flex-end;margin-right:-.02em}
+.sq-x{border-top:1.2px solid currentColor;padding:.12em .14em 0 .06em;line-height:1.15}
+.pb{display:inline-flex;align-items:center;vertical-align:middle}
+.pp{display:inline-block;transform:scaleY(2.1);font-weight:400;padding:0 .08em}
+
+.copy-fb{width:100%;min-height:160px;font:13px/1.45 ui-monospace,"SF Mono",Menlo,monospace;background:var(--paper);color:var(--ink);border:1px solid var(--line-strong);border-radius:4px;padding:10px}
+.foot{font-size:13px;color:var(--muted);border-top:1px solid var(--line-strong);padding-top:12px;display:flex;flex-direction:column;gap:4px}
+.foot p{margin:0;max-width:80ch}
+.foot i{font-family:var(--font-math);font-size:1.1em}
+@media (prefers-reduced-motion: reduce){.side,.arc .sec{transition:none}}
+</style>
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+</head>
+<body>
+
+
+<div class="app">
+  <!-- Záhlaví ve stylu rohového razítka technického výkresu -->
+  <header class="razitko">
+    <div class="rz rz-title">
+      <span class="rz-cap">Název výkresu</span>
+      <h1>Pravoúhlý trojúhelník</h1>
+      <p class="rz-sub">Zapiš do polí u trojúhelníku dvě známé veličiny, aspoň jednu délku. Zbytek se dopočítá i s postupem.</p>
+    </div>
+    <label class="rz" for="unit"><span class="rz-cap">Jednotka délky</span><input id="unit" type="text" value="m" autocomplete="off" spellcheck="false"></label>
+    <label class="rz" for="dec"><span class="rz-cap">Desetinná místa</span>
+      <select id="dec"><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select>
+    </label>
+    <label class="rz" for="preset"><span class="rz-cap">Příklad</span>
+      <select id="preset">
+        <option value="">vlastní zadání</option>
+        <option value="stena">Šikmá stěna nádrže</option>
+        <option value="manometr">Šikmý mikromanometr</option>
+        <option value="kanal">Svah lichoběžníkového kanálu</option>
+        <option value="345">Trojúhelník 3–4–5</option>
+      </select>
+    </label>
+  </header>
+
+  <section class="sheet" aria-label="Náčrt trojúhelníku">
+    <div class="toolbar" role="toolbar" aria-label="Natočení náčrtu">
+      <div class="tgroup">
+        <button class="tb" id="rotL" type="button" title="Otočit o 90° proti směru hodinových ručiček">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 8a5 5 0 1 0 1.6-3.7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M4.6 1.6v2.9h2.9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>90°</button>
+        <button class="tb" id="rotR" type="button" title="Otočit o 90° po směru hodinových ručiček">
+          <svg viewBox="0 0 16 16" aria-hidden="true" style="transform:scaleX(-1)"><path d="M3.2 8a5 5 0 1 0 1.6-3.7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M4.6 1.6v2.9h2.9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>90°</button>
+        <input type="range" id="rot" min="0" max="359" step="1" value="0" aria-label="Natočení náčrtu ve stupních">
+        <output id="rotOut" for="rot">0°</output>
+      </div>
+      <div class="tgroup">
+        <button class="tb" id="mirror" type="button" aria-pressed="false">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5v13" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 1.6"/><path d="M6 4 1.5 12H6z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M10 4l4.5 8H10z" fill="currentColor" fill-opacity=".35" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>Zrcadlit</button>
+        <button class="tb" id="hypDown" type="button" title="Přepona vodorovně dole, pravý úhel nahoře">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 12.5h13L6 4.6z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M1.5 14.6h13" stroke="currentColor" stroke-width="1.8"/></svg>Přepona dole</button>
+        <button class="tb tb-quiet" id="resetView" type="button">Výchozí poloha</button>
+      </div>
+      <div class="tgroup">
+        <label class="chk" for="showH"><input type="checkbox" id="showH">Výška a úseky</label>
+        <button class="tb tb-quiet" id="clear" type="button">Vymazat hodnoty</button>
+      </div>
+    </div>
+
+    <div class="board" id="board">
+      <svg id="svg" aria-hidden="true">
+        <defs>
+          <pattern id="gmin" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M10 0H0V10" class="g1"/></pattern>
+          <pattern id="gmaj" width="50" height="50" patternUnits="userSpaceOnUse"><rect width="50" height="50" fill="url(#gmin)"/><path d="M50 0H0V50" class="g2"/></pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#gmaj)"/>
+        <g id="layer"></g>
+      </svg>
+
+      <!-- Pole pro zadání – JavaScript je přesune ke stranám a vrcholům -->
+      <div class="field" id="fld-a" data-k="a" data-state="empty">
+        <label class="lab" for="in-a">a&#8202;=</label>
+        <input id="in-a" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" aria-describedby="note-a">
+        <span class="unit u-len">m</span>
+        <span class="note" id="note-a"></span>
+      </div>
+      <div class="field" id="fld-b" data-k="b" data-state="empty">
+        <label class="lab" for="in-b">b&#8202;=</label>
+        <input id="in-b" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" aria-describedby="note-b">
+        <span class="unit u-len">m</span>
+        <span class="note" id="note-b"></span>
+      </div>
+      <div class="field" id="fld-c" data-k="c" data-state="empty">
+        <label class="lab" for="in-c">c&#8202;=</label>
+        <input id="in-c" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" aria-describedby="note-c">
+        <span class="unit u-len">m</span>
+        <span class="note" id="note-c"></span>
+      </div>
+      <div class="field" id="fld-al" data-k="al" data-state="empty">
+        <label class="lab" for="in-al">α&#8202;=</label>
+        <input id="in-al" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" aria-describedby="note-al">
+        <span class="unit">°</span>
+        <span class="note" id="note-al"></span>
+      </div>
+      <div class="field" id="fld-be" data-k="be" data-state="empty">
+        <label class="lab" for="in-be">β&#8202;=</label>
+        <input id="in-be" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" aria-describedby="note-be">
+        <span class="unit">°</span>
+        <span class="note" id="note-be"></span>
+      </div>
+      <div class="board-hint">Tažením myši po ploše náčrt otočíš</div>
+    </div>
+
+    <div class="statusbar">
+      <p id="status" aria-live="polite"></p>
+      <ul class="legend" aria-label="Legenda">
+        <li><span class="sw sw-given"></span>zadáno</li>
+        <li><span class="sw sw-calc"></span>dopočítáno</li>
+        <li><span class="sw sw-bad"></span>chyba</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="calc" aria-labelledby="h-calc">
+    <div class="calc-head">
+      <h2 id="h-calc">Postup výpočtu</h2>
+      <button class="tb" id="copy" type="button">Kopírovat postup (Markdown + LaTeX)</button>
+    </div>
+    <div class="given" id="given" hidden></div>
+    <p class="empty-note" id="stepsEmpty">Postup se ukáže, jakmile zadáš dvě veličiny (aspoň jednu délku).</p>
+    <ol class="cards" id="steps"></ol>
+    <div id="extraWrap" hidden>
+      <h2 class="h2-sub">Další veličiny</h2>
+      <ul class="cards" id="extra" style="margin-top:12px"></ul>
+    </div>
+    <textarea class="copy-fb" id="copyFallback" readonly hidden aria-label="Postup k ručnímu zkopírování"></textarea>
+  </section>
+
+  <footer class="foot">
+    <p><strong>Značení:</strong> pravý úhel γ = 90° je u vrcholu C. Přepona <i>c</i> leží proti C, odvěsna <i>a</i> proti úhlu <i>α</i> (vrchol A), odvěsna <i>b</i> proti úhlu <i>β</i> (vrchol B). Úsek <i>c<sub>a</sub></i> přiléhá k odvěsně <i>a</i>, úsek <i>c<sub>b</sub></i> k odvěsně <i>b</i>.</p>
+    <p>Počítá se s nezaokrouhlenými mezivýsledky, zaokrouhluje se jen zobrazení (znak ≐). Desetinnou čárku i tečku můžeš psát obě.</p>
+  </footer>
+</div>
+
+<script>
+"use strict";
+/* =====================================================================
+   PRAVOÚHLÝ TROJÚHELNÍK – celá logika aplikace
+   Struktura:
+   1) pomocné funkce (stupně, formátování čísel)
+   2) „sazeči“ vzorců – stejná šablona vzorce umí HTML i LaTeX
+   3) tabulka výpočtů pro každou dvojici zadaných veličin
+   4) solve() – rozhodne, z čeho se počítá, a spočítá vše
+   5) vykreslení polí, postupu a náčrtu (SVG)
+   6) ovládání (otáčení, zrcadlení, příklady, kopírování)
+   ===================================================================== */
+
+/* ---------- 1) Pomocné funkce ---------- */
+const RAD = Math.PI / 180;                 // 1° v radiánech (JavaScript počítá goniometrii v radiánech)
+const sind = x => Math.sin(x * RAD);       // sinus úhlu zadaného ve stupních
+const cosd = x => Math.cos(x * RAD);
+const tand = x => Math.tan(x * RAD);
+const asind = x => Math.asin(x) / RAD;     // arkussinus → výsledek ve stupních
+const atand = x => Math.atan(x) / RAD;
+const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+const $ = sel => document.querySelector(sel);
+
+const KEYS = ['a', 'b', 'c', 'al', 'be'];          // al = α, be = β
+const isAng = k => k === 'al' || k === 'be';       // je to úhel?
+
+// Stav aplikace na jednom místě
+const S = {
+  inp: {},          // co je napsané v polích: k → {text, num, t}; t = pořadí úpravy
+  clock: 0,         // počítadlo úprav (čím vyšší t, tím novější zadání)
+  unit: 'm', dec: 3,
+  rot: 0, mirror: false, showH: false,
+  realAl: 36.87,    // skutečný úhel α pro tvar náčrtu
+  preset: null,
+  R: null           // poslední výsledek solve()
+};
+KEYS.forEach(k => S.inp[k] = { text: '', num: NaN, t: 0 });
+// Co je právě vidět (kvůli plynulé animaci se k cílovým hodnotám blíží postupně)
+const view = { al: 36.87, rot: 0, mx: 1 };
+
+// Číslo s pevným počtem desetinných míst a desetinnou čárkou: 2.5 → "2,500"
+function fmtFixed(x, dec = S.dec) {
+  let s = x.toFixed(dec);
+  if (/^-0(\.0+)?$/.test(s)) s = s.slice(1);       // žádné „-0,000“
+  return s.replace('.', ',');
+}
+// Zadané číslo bez zbytečných nul: 2.50 → "2,5"
+function fmtGiven(x) {
+  return String(parseFloat(x.toPrecision(12))).replace('.', ',');
+}
+// Převod textu z pole na číslo. Bere čárku i tečku, mezery a znak ° ignoruje.
+function parseNum(text) {
+  const s = text.trim().replace(/\s+/g, '').replace(/°$/, '').replace(',', '.');
+  if (s === '' || !/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(s)) return NaN;
+  return parseFloat(s);
+}
+const esc = s => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+const strip = s => s.replace(/<[^>]*>/g, '');
+
+/* ---------- 2) Sazeči vzorců ----------
+   Každý vzorec je napsaný jednou jako funkce (M, X) => text.
+   M = sazeč (H = hezké HTML, HI = jednořádkové HTML do polí, L = LaTeX pro Obsidian)
+   X = co dosadit za proměnnou: symbol (obecný vzorec) nebo číslo (dosazení). */
+const VAR_H = { a: '<i>a</i>', b: '<i>b</i>', c: '<i>c</i>', al: '<i>α</i>', be: '<i>β</i>',
+  vc: '<i>v</i><sub>c</sub>', ca: '<i>c</i><sub>a</sub>', cb: '<i>c</i><sub>b</sub>', S: '<i>S</i>', o: '<i>o</i>' };
+const VAR_L = { a: 'a', b: 'b', c: 'c', al: '\\alpha', be: '\\beta', vc: 'v_c', ca: 'c_a', cb: 'c_b', S: 'S', o: 'o' };
+const LFN = { sin: '\\sin', cos: '\\cos', tg: '\\operatorname{tg}', arcsin: '\\arcsin', arctg: '\\operatorname{arctg}' };
+
+const H = {
+  v: k => VAR_H[k],
+  num: (x, given, ang, dec) => (given ? fmtGiven(x) : fmtFixed(x, dec)) + (ang ? '°' : ''),
+  frac: (p, q) => `<span class="fr"><span class="fr-n">${p}</span><span class="fr-d">${q}</span></span>`,
+  sqrt: x => `<span class="sq"><span class="sq-r">√</span><span class="sq-x">${x}</span></span>`,
+  p2: x => `${x}<sup>2</sup>`,
+  fn: (f, x) => `<span class="fn">${f}</span>&#8201;${x}`,
+  afn: (f, x) => `<span class="fn">${f}</span>${x.includes('class="fr"')
+      ? `<span class="pb"><span class="pp">(</span>${x}<span class="pp">)</span></span>` : `(${x})`}`,
+  dt: ' · ', pl: ' + ', mi: ' − ', eq: ' = ', ap: ' ≐ ', then: '&ensp;⇒&ensp;',
+  c90: '90°',
+  unit: u => u ? `&nbsp;<span class="u">${esc(u)}</span>` : '',
+  unit2: u => u ? `&nbsp;<span class="u">${esc(u)}<sup>2</sup></span>` : '',
+  rad: '&nbsp;rad'
+};
+// Jednořádková varianta do malých polí v náčrtu: a/b místo zlomku, √(…) místo odmocniny
+const wrapI = s => /[·+−]/.test(strip(s)) ? `(${s})` : s;
+const HI = Object.assign({}, H, {
+  frac: (p, q) => `${wrapI(p)}/${wrapI(q)}`,
+  sqrt: x => `√(${x})`,
+  afn: (f, x) => `<span class="fn">${f}</span>(${x})`
+});
+const lnum = s => s.replace(',', '{,}');           // desetinná čárka v LaTeXu
+const lunit = u => u.replace(/[\\{}$%#&_^~]/g, '');
+const L = {
+  v: k => VAR_L[k],
+  num: (x, given, ang, dec) => lnum(given ? fmtGiven(x) : fmtFixed(x, dec)) + (ang ? '^\\circ' : ''),
+  frac: (p, q) => `\\frac{${p}}{${q}}`,
+  sqrt: x => `\\sqrt{${x}}`,
+  p2: x => `{${x}}^{2}`,
+  fn: (f, x) => `${LFN[f]} ${x}`,
+  afn: (f, x) => `${LFN[f]}\\left(${x}\\right)`,
+  dt: ' \\cdot ', pl: ' + ', mi: ' - ', eq: ' = ', ap: ' \\doteq ', then: ' \\;\\Rightarrow\\; ',
+  c90: '90^\\circ',
+  unit: u => u ? `\\ \\mathrm{${lunit(u)}}` : '',
+  unit2: u => u ? `\\ \\mathrm{${lunit(u)}}^2` : '',
+  rad: '\\ \\mathrm{rad}'
+};
+
+/* ---------- 3) Tabulka výpočtů ----------
+   Každý krok: k = co počítám, why = podle čeho, rel = výchozí vztah,
+   f = pravá strana vzorce (šablona), calc = vlastní výpočet z hodnot v. */
+const PYTH = (M, X) => `${M.p2(X('c'))}${M.eq}${M.p2(X('a'))}${M.pl}${M.p2(X('b'))}`;
+const SUM90 = (M, X) => `${X('al')}${M.pl}${X('be')}${M.eq}${M.c90}`;
+const comp90 = from => ({                  // druhý ostrý úhel z prvního
+  why: 'součet úhlů v trojúhelníku', rel: SUM90,
+  f: (M, X) => `${M.c90}${M.mi}${X(from)}`, calc: v => 90 - v[from]
+});
+const REL = {                              // definice goniometrických funkcí v pravoúhlém trojúhelníku
+  sinA: (M, X) => `${M.fn('sin', X('al'))}${M.eq}${M.frac(X('a'), X('c'))}`,
+  cosA: (M, X) => `${M.fn('cos', X('al'))}${M.eq}${M.frac(X('b'), X('c'))}`,
+  tgA:  (M, X) => `${M.fn('tg', X('al'))}${M.eq}${M.frac(X('a'), X('b'))}`,
+  sinB: (M, X) => `${M.fn('sin', X('be'))}${M.eq}${M.frac(X('b'), X('c'))}`,
+  cosB: (M, X) => `${M.fn('cos', X('be'))}${M.eq}${M.frac(X('a'), X('c'))}`,
+  tgB:  (M, X) => `${M.fn('tg', X('be'))}${M.eq}${M.frac(X('b'), X('a'))}`
+};
+const step = (k, why, rel, f, calc) => ({ k, why, rel, f, calc });
+
+// Klíč = dvojice zadaných veličin v pořadí a, b, c, α, β
+const CASES = {
+  'a|b': [
+    step('c', 'Pythagorova věta', PYTH, (M, X) => M.sqrt(`${M.p2(X('a'))}${M.pl}${M.p2(X('b'))}`), v => Math.hypot(v.a, v.b)),
+    step('al', 'tangens úhlu α', REL.tgA, (M, X) => M.afn('arctg', M.frac(X('a'), X('b'))), v => atand(v.a / v.b)),
+    { k: 'be', ...comp90('al') }
+  ],
+  'a|c': [
+    step('b', 'Pythagorova věta', PYTH, (M, X) => M.sqrt(`${M.p2(X('c'))}${M.mi}${M.p2(X('a'))}`), v => Math.sqrt(v.c * v.c - v.a * v.a)),
+    step('al', 'sinus úhlu α', REL.sinA, (M, X) => M.afn('arcsin', M.frac(X('a'), X('c'))), v => asind(v.a / v.c)),
+    { k: 'be', ...comp90('al') }
+  ],
+  'b|c': [
+    step('a', 'Pythagorova věta', PYTH, (M, X) => M.sqrt(`${M.p2(X('c'))}${M.mi}${M.p2(X('b'))}`), v => Math.sqrt(v.c * v.c - v.b * v.b)),
+    step('be', 'sinus úhlu β', REL.sinB, (M, X) => M.afn('arcsin', M.frac(X('b'), X('c'))), v => asind(v.b / v.c)),
+    { k: 'al', ...comp90('be') }
+  ],
+  'a|al': [
+    { k: 'be', ...comp90('al') },
+    step('c', 'sinus úhlu α', REL.sinA, (M, X) => M.frac(X('a'), M.fn('sin', X('al'))), v => v.a / sind(v.al)),
+    step('b', 'tangens úhlu α', REL.tgA, (M, X) => M.frac(X('a'), M.fn('tg', X('al'))), v => v.a / tand(v.al))
+  ],
+  'a|be': [
+    { k: 'al', ...comp90('be') },
+    step('c', 'kosinus úhlu β', REL.cosB, (M, X) => M.frac(X('a'), M.fn('cos', X('be'))), v => v.a / cosd(v.be)),
+    step('b', 'tangens úhlu β', REL.tgB, (M, X) => `${X('a')}${M.dt}${M.fn('tg', X('be'))}`, v => v.a * tand(v.be))
+  ],
+  'b|al': [
+    { k: 'be', ...comp90('al') },
+    step('c', 'kosinus úhlu α', REL.cosA, (M, X) => M.frac(X('b'), M.fn('cos', X('al'))), v => v.b / cosd(v.al)),
+    step('a', 'tangens úhlu α', REL.tgA, (M, X) => `${X('b')}${M.dt}${M.fn('tg', X('al'))}`, v => v.b * tand(v.al))
+  ],
+  'b|be': [
+    { k: 'al', ...comp90('be') },
+    step('c', 'sinus úhlu β', REL.sinB, (M, X) => M.frac(X('b'), M.fn('sin', X('be'))), v => v.b / sind(v.be)),
+    step('a', 'tangens úhlu β', REL.tgB, (M, X) => M.frac(X('b'), M.fn('tg', X('be'))), v => v.b / tand(v.be))
+  ],
+  'c|al': [
+    { k: 'be', ...comp90('al') },
+    step('a', 'sinus úhlu α', REL.sinA, (M, X) => `${X('c')}${M.dt}${M.fn('sin', X('al'))}`, v => v.c * sind(v.al)),
+    step('b', 'kosinus úhlu α', REL.cosA, (M, X) => `${X('c')}${M.dt}${M.fn('cos', X('al'))}`, v => v.c * cosd(v.al))
+  ],
+  'c|be': [
+    { k: 'al', ...comp90('be') },
+    step('b', 'sinus úhlu β', REL.sinB, (M, X) => `${X('c')}${M.dt}${M.fn('sin', X('be'))}`, v => v.c * sind(v.be)),
+    step('a', 'kosinus úhlu β', REL.cosB, (M, X) => `${X('c')}${M.dt}${M.fn('cos', X('be'))}`, v => v.c * cosd(v.be))
+  ]
+};
+
+// Další veličiny – počítají se, až je trojúhelník celý určený
+const DERIVED = [
+  { k: 'vc', title: 'Výška na přeponu', why: 'obsah spočítaný dvakrát', kind: 'len',
+    rel: (M, X) => `${M.frac(`${X('a')}${M.dt}${X('b')}`, '2')}${M.eq}${M.frac(`${X('c')}${M.dt}${X('vc')}`, '2')}`,
+    f: (M, X) => M.frac(`${X('a')}${M.dt}${X('b')}`, X('c')), calc: v => v.a * v.b / v.c },
+  { k: 'ca', title: 'Úsek přepony', why: 'Eukleidova věta o odvěsně a', kind: 'len',
+    rel: (M, X) => `${M.p2(X('a'))}${M.eq}${X('c')}${M.dt}${X('ca')}`,
+    f: (M, X) => M.frac(M.p2(X('a')), X('c')), calc: v => v.a * v.a / v.c },
+  { k: 'cb', title: 'Úsek přepony', why: 'Eukleidova věta o odvěsně b', kind: 'len',
+    rel: (M, X) => `${M.p2(X('b'))}${M.eq}${X('c')}${M.dt}${X('cb')}`,
+    f: (M, X) => M.frac(M.p2(X('b')), X('c')), calc: v => v.b * v.b / v.c },
+  { k: 'S', title: 'Obsah', why: 'polovina obdélníku a × b', kind: 'area',
+    f: (M, X) => M.frac(`${X('a')}${M.dt}${X('b')}`, '2'), calc: v => v.a * v.b / 2 },
+  { k: 'o', title: 'Obvod', why: 'součet délek stran', kind: 'len',
+    f: (M, X) => `${X('a')}${M.pl}${X('b')}${M.pl}${X('c')}`, calc: v => v.a + v.b + v.c },
+  { k: 'sl', title: 'Sklon přepony', why: 'vůči odvěsně b, svah 1 : m', kind: 'sl',
+    lhs: M => M.fn('tg', M.v('al')),
+    f: (M, X) => M.frac(X('a'), X('b')), calc: v => v.a / v.b }
+];
+const TITLE = { a: 'Odvěsna', b: 'Odvěsna', c: 'Přepona', al: 'Úhel', be: 'Úhel' };
+const ROLE = { a: 'odvěsna proti α', b: 'odvěsna proti β', c: 'přepona', al: 'úhel u vrcholu A', be: 'úhel u vrcholu B' };
+const SYM_NAME = { a: 'a', b: 'b', c: 'c', al: 'α', be: 'β' };
+
+/* ---------- 4) Řešič ---------- */
+function solve() {
+  const R = { status: 'empty', msg: '', fields: {}, vals: {}, base: new Set(), steps: [], checks: [], shapeAl: null, fieldErr: false };
+  // a) zkontrolovat, co je v polích
+  const known = [];
+  for (const k of KEYS) {
+    const f = S.inp[k];
+    if (f.text.trim() === '') continue;
+    let err = '';
+    if (!Number.isFinite(f.num)) err = 'neplatné číslo';
+    else if (f.num <= 0) err = isAng(k) ? 'musí být větší než 0°' : 'musí být větší než 0';
+    else if (isAng(k) && f.num >= 90) err = 'musí být menší než 90°';
+    if (err) { R.fields[k] = { st: 'bad', note: err }; R.fieldErr = true; continue; }
+    known.push({ k, v: f.num, t: f.t });
+    R.fields[k] = { st: 'given', note: 'zadáno' };
+  }
+  known.sort((x, y) => y.t - x.t);                 // nejnovější zadání první
+  if (!known.length) {
+    if (R.fieldErr) { R.status = 'error'; R.msg = 'Oprav hodnotu označenou červeně.'; }
+    return R;
+  }
+
+  // b) najít dvojici, ze které se počítá (preferuj nejnovější, ale ne dva úhly)
+  let pair = null;
+  search: for (let j = 1; j < known.length; j++) for (let i = 0; i < j; i++) {
+    if (!(isAng(known[i].k) && isAng(known[j].k))) { pair = [known[i], known[j]]; break search; }
+  }
+
+  if (!pair) {                                     // jen jedna veličina, nebo jen úhly
+    known.forEach(x => { R.vals[x.k] = x.v; R.base.add(x.k); });
+    const angs = known.filter(x => isAng(x.k));
+    if (!angs.length) { R.status = 'need'; R.msg = 'Přidej ještě jednu veličinu: druhou délku nebo úhel.'; return R; }
+    if (angs.length === 2) {
+      const sum = R.vals.al + R.vals.be;
+      if (Math.abs(sum - 90) > 0.05) {
+        R.fields.al = R.fields.be = { st: 'bad', note: 'α + β ≠ 90°' };
+        R.status = 'error'; R.msg = `Ostré úhly musí dát dohromady 90°, teď je to ${fmtGiven(sum)}°.`; return R;
+      }
+      R.shapeAl = R.vals.al; R.status = 'shape'; R.msg = 'Úhly určují jen tvar trojúhelníku. Zadej ještě jednu délku.'; return R;
+    }
+    const g = angs[0], other = g.k === 'al' ? 'be' : 'al';
+    const def = { k: other, ...comp90(g.k) };
+    R.vals[other] = def.calc(R.vals);
+    R.steps.push(def);
+    R.fields[other] = { st: 'calc', note: '= ' + def.f(HI, k => HI.v(k)) };
+    R.shapeAl = R.vals.al; R.status = 'shape'; R.msg = 'Úhly určují jen tvar trojúhelníku. Zadej ještě jednu délku.';
+    return R;
+  }
+
+  // c) spočítat ze zvolené dvojice
+  pair.sort((x, y) => KEYS.indexOf(x.k) - KEYS.indexOf(y.k));
+  const [p, q] = pair, key = p.k + '|' + q.k, v = R.vals;
+  v[p.k] = p.v; v[q.k] = q.v; R.base = new Set([p.k, q.k]);
+  if ((key === 'a|c' || key === 'b|c') && v[p.k] >= v.c) {
+    R.fields[p.k] = { st: 'bad', note: 'není kratší než c' };
+    R.fields.c = { st: 'bad', note: `musí být delší než ${p.k}` };
+    R.status = 'error'; R.msg = `Odvěsna ${p.k} musí být kratší než přepona c.`;
+    return R;
+  }
+  for (const def of CASES[key]) {
+    v[def.k] = def.calc(v);
+    R.steps.push(def);
+    R.fields[def.k] = { st: 'calc', note: '= ' + def.f(HI, k => HI.v(k)) };
+  }
+  // d) další zadané hodnoty jen zkontrolovat
+  for (const x of known) {
+    if (R.base.has(x.k)) continue;
+    const comp = v[x.k], dev = Math.abs(x.v - comp) / Math.abs(comp), ok = dev <= 0.005;
+    R.checks.push({ k: x.k, given: x.v, comp, dev, ok });
+    R.fields[x.k] = ok ? { st: 'ok', note: '✓ souhlasí s výpočtem' }
+                       : { st: 'bad', note: `✗ vychází ${fmtFixed(comp)}${isAng(x.k) ? '°' : ''}` };
+  }
+  if (known.length > 2) for (const k of R.base) R.fields[k].note = 'zadáno · z toho se počítá';
+  for (const d of DERIVED) v[d.k] = d.calc(v);
+  R.status = 'ok';
+  return R;
+}
+
+/* ---------- 5a) Výsledek s jednotkou ---------- */
+function unitOf(kind, M) {
+  const u = S.unit.trim();
+  if (kind === 'len') return M.unit(u);
+  if (kind === 'area') return M.unit2(u);
+  return '';
+}
+// „≐ 5,000 m“ – znak ≐, když se zaokrouhlovalo, jinak „=“
+function resTail(M, d, x) {
+  const kind = d.kind || (isAng(d.k) ? 'ang' : 'len');
+  const exact = Math.abs(Number(x.toFixed(S.dec)) - x) < 1e-9 * Math.max(1, Math.abs(x));
+  const rel = exact ? M.eq : M.ap;
+  if (kind === 'sl') {                       // sklon: tg α, v procentech
+    const pct = fmtFixed(x * 100, Math.max(1, S.dec - 2));
+    return M === L
+      ? `${rel}${lnum(fmtFixed(x))}${M.ap}${lnum(pct)}\\,\\%`
+      : `${rel}${fmtFixed(x)}${M.ap}${pct}&nbsp;%`;
+  }
+  let s = `${rel}${M.num(x, false, kind === 'ang')}${unitOf(kind, M)}`;
+  if (kind === 'ang') s += `${M.ap}${M.num(x * RAD, false, false, S.dec + 1)}${M.rad}`;
+  return s;
+}
+function titleHTML(d) {
+  if (d.k === 'sl') return d.title;
+  return `${d.title || TITLE[d.k]} ${H.v(d.k)}`;
+}
+function titleMD(d) {
+  if (d.k === 'sl') return d.title;
+  return `${d.title || TITLE[d.k]} $${L.v(d.k)}$`;
+}
+
+/* ---------- 5b) Karty postupu ---------- */
+function cardHTML(d, R, no) {
+  const X0 = k => H.v(k);                                      // symboly
+  const X1 = k => H.num(R.vals[k], R.base.has(k), isAng(k));   // čísla
+  const lhs = d.lhs ? d.lhs(H) : H.v(d.k);
+  const rows = [];
+  if (d.rel) rows.push(['Vztah', d.rel(H, X0)]);
+  rows.push(['Vzorec', `${lhs}${H.eq}${d.f(H, X0)}`]);
+  rows.push(['Dosazení', `${lhs}${H.eq}${d.f(H, X1)}`]);
+  rows.push(['Výsledek', `${lhs}${resTail(H, d, R.vals[d.k])}`]);
+  if (d.k === 'sl') rows.push(['Svah 1 : m', slopeM(H, R)]);   // sklon jako „1 : m“ (svahy kanálů, hrází)
+  return `<li class="card">
+    <div class="card-head">${no ? `<span class="no">${no}</span>` : ''}<h3>${titleHTML(d)}</h3><span class="why">${d.why}</span></div>
+    ${rows.map(([l, m]) => `<div class="row${l === 'Výsledek' || l.startsWith('Svah') ? ' res' : ''}"><span class="lbl">${l}</span><span class="mx">${m}</span></div>`).join('')}
+  </li>`;
+}
+// m ze svahu 1 : m  →  m = b / a
+function slopeM(M, R) {
+  const isL = M === L, sym = s => isL ? s : `<i>${s}</i>`;
+  const X1 = k => M.num(R.vals[k], R.base.has(k), false), m = R.vals.b / R.vals.a;
+  const exact = Math.abs(Number(m.toFixed(S.dec)) - m) < 1e-9 * Math.max(1, m);
+  const mv = isL ? lnum(fmtFixed(m)) : fmtFixed(m);
+  return `${sym('m')}${M.eq}${M.frac(sym('b'), sym('a'))}${M.eq}${M.frac(X1('b'), X1('a'))}${exact ? M.eq : M.ap}${mv}`;
+}
+function cardMD(d, R, no) {
+  const X0 = k => L.v(k), X1 = k => L.num(R.vals[k], R.base.has(k), isAng(k));
+  const lhs = d.lhs ? d.lhs(L) : L.v(d.k);
+  const rel = d.rel ? d.rel(L, X0) + ' \\quad\\Rightarrow\\quad ' : '';
+  let md = `**${no ? no + '. ' : ''}${titleMD(d)}** (${d.why})\n$$${rel}${lhs} = ${d.f(L, X0)} = ${d.f(L, X1)}${resTail(L, d, R.vals[d.k])}$$\n`;
+  if (d.k === 'sl') md += `Svah $1 : m$:\n$$${slopeM(L, R)}$$\n`;
+  return md;
+}
+function buildMarkdown(R) {
+  const out = ['### Pravoúhlý trojúhelník', '',
+    'Pravý úhel u C, přepona $c$, odvěsna $a$ leží proti úhlu $\\alpha$, odvěsna $b$ proti úhlu $\\beta$.', ''];
+  const giv = KEYS.filter(k => R.base.has(k))
+    .map(k => `$${L.v(k)} = ${L.num(R.vals[k], true, isAng(k))}${isAng(k) ? '' : unitOf('len', L)}$`);
+  if (giv.length) out.push('**Zadáno:** ' + giv.join(', '), '');
+  R.steps.forEach((d, i) => out.push(cardMD(d, R, i + 1)));
+  if (R.status === 'ok') { out.push('**Další veličiny**', ''); DERIVED.forEach(d => out.push(cardMD(d, R, 0))); }
+  if (R.checks.length) {
+    out.push('**Kontrola dalších zadaných hodnot:** ' + R.checks.map(c =>
+      `$${L.v(c.k)} = ${L.num(c.given, true, isAng(c.k))}$ ${c.ok ? 'souhlasí' : `nesouhlasí (vychází $${L.num(c.comp, false, isAng(c.k))}$)`}`).join(', '));
+  }
+  return out.join('\n');
+}
+
+/* ---------- 5c) Vykreslení polí, stavu a postupu ---------- */
+const FIELDS = {};
+KEYS.forEach(k => FIELDS[k] = { root: $('#fld-' + k), input: $('#in-' + k), note: $('#note-' + k) });
+const board = $('#board'), layer = $('#layer'), svg = $('#svg');
+
+function renderFields(R) {
+  for (const k of KEYS) {
+    const F = FIELDS[k], info = R.fields[k] || { st: 'empty', note: ROLE[k] };
+    F.root.dataset.state = info.st;
+    F.note.innerHTML = info.note;
+    // Dopočítanou hodnotu napíšeme přímo do pole (jen když v něm nic není a uživatel v něm zrovna nepíše)
+    if (S.inp[k].text === '' && document.activeElement !== F.input) {
+      F.input.value = info.st === 'calc' ? fmtFixed(R.vals[k]) : '';
+    }
+  }
+  document.querySelectorAll('.u-len').forEach(el => el.textContent = S.unit.trim());
+}
+
+const PRESETS = {
+  stena: { name: 'Šikmá stěna nádrže', unit: 'm', vals: { c: '2,5', al: '60' },
+    note: 'c je délka smáčené stěny, α její sklon, a vychází jako hloubka vody.' },
+  manometr: { name: 'Šikmý mikromanometr', unit: 'mm', vals: { c: '150', al: '20' },
+    note: 'c je délka sloupce odečtená na šikmé trubici, a je svislá výška h = l · sin α.' },
+  kanal: { name: 'Svah lichoběžníkového kanálu', unit: 'm', vals: { a: '1,2', b: '1,8' },
+    note: 'a je hloubka h, b vodorovný průmět m · h, c délka svahu do smáčeného obvodu.' },
+  '345': { name: 'Trojúhelník 3–4–5', unit: 'cm', vals: { a: '3', b: '4' },
+    note: 'kontrola, přepona musí vyjít přesně 5.' }
+};
+
+function renderStatus(R) {
+  const unit = S.unit.trim();
+  const show = k => `<i>${SYM_NAME[k]}</i> = ${fmtGiven(R.vals[k])}${isAng(k) ? '°' : unit ? ' ' + esc(unit) : ''}`;
+  let s = '';
+  switch (R.status) {
+    case 'empty': s = 'Zapiš do polí u trojúhelníku dvě známé veličiny, aspoň jednu délku.'; break;
+    case 'need': s = `Zadáno ${[...R.base].map(show).join(', ')}. ${R.msg}`; break;
+    case 'shape': s = R.msg; break;
+    case 'error': s = `<span class="err">${R.msg}</span>`; break;
+    case 'ok': {
+      s = `Počítá se z ${[...R.base].map(show).join(' a ')}.`;
+      const bad = R.checks.filter(c => !c.ok), good = R.checks.filter(c => c.ok);
+      if (good.length) s += ` Kontrola ${good.map(c => '<i>' + SYM_NAME[c.k] + '</i>').join(', ')}: souhlasí.`;
+      if (bad.length) s += ` <span class="err">${bad.map(c => SYM_NAME[c.k]).join(', ')} nesouhlasí se zbytkem zadání.</span>`;
+    }
+  }
+  if (R.fieldErr && R.status !== 'error') s += ' <span class="err">Některé pole má neplatnou hodnotu.</span>';
+  if (S.preset) s = `<span class="tag">Ukázka</span>${PRESETS[S.preset].name}: ${PRESETS[S.preset].note} ` + s;
+  if (S.realAl < 12 || S.realAl > 78) s += ' <span class="muted">Úhel je moc ostrý, náčrt proto není v měřítku.</span>';
+  $('#status').innerHTML = s;
+}
+
+function renderSteps(R) {
+  const chips = [];
+  for (const k of KEYS) if (R.base.has(k))
+    chips.push(`<span class="chip chip-given">${H.v(k)} = ${H.num(R.vals[k], true, isAng(k))}${isAng(k) ? '' : unitOf('len', H)}</span>`);
+  for (const c of R.checks)
+    chips.push(`<span class="chip ${c.ok ? 'chip-ok' : 'chip-bad'}">${H.v(c.k)} = ${H.num(c.given, true, isAng(c.k))} ${c.ok ? '✓ souhlasí' : '✗ z výpočtu ' + H.num(c.comp, false, isAng(c.k))}</span>`);
+  $('#given').innerHTML = chips.length ? `<span class="given-lbl">Zadáno</span>${chips.join('')}` : '';
+  $('#given').hidden = !chips.length;
+  $('#steps').innerHTML = R.steps.map((d, i) => cardHTML(d, R, i + 1)).join('');
+  $('#stepsEmpty').hidden = R.steps.length > 0;
+  const ok = R.status === 'ok';
+  $('#extra').innerHTML = ok ? DERIVED.map(d => cardHTML(d, R, 0)).join('') : '';
+  $('#extraWrap').hidden = !ok;
+  $('#copy').disabled = !R.steps.length;
+}
+
+// Hlavní obnova po každé změně
+function update() {
+  const R = solve();
+  S.R = R;
+  if (R.vals.al !== undefined && (R.status === 'ok' || R.status === 'shape')) S.realAl = R.vals.al;
+  else if (R.shapeAl != null) S.realAl = R.shapeAl;
+  renderFields(R);
+  renderStatus(R);
+  renderSteps(R);
+  animate();
+}
+
+/* ---------- 5d) Náčrt (SVG) ----------
+   Trojúhelník má v „místních“ souřadnicích C v počátku, A vlevo, B nahoře (přepona = 1).
+   Pak se zrcadlí (mx), otočí (rot) a nakonec zvětší tak, aby se i s poli vešel do plochy. */
+const SIDES = { a: ['B', 'C', 'A'], b: ['C', 'A', 'B'], c: ['A', 'B', 'C'] };  // [konec, konec, protější vrchol]
+const ANGLES = { al: ['A', 'C', 'B'], be: ['B', 'A', 'C'] };                   // [vrchol, soused, soused]
+const sub = (p, q) => ({ x: p.x - q.x, y: p.y - q.y });
+const add = (p, q) => ({ x: p.x + q.x, y: p.y + q.y });
+const mul = (p, s) => ({ x: p.x * s, y: p.y * s });
+const dot = (p, q) => p.x * q.x + p.y * q.y;
+const len = p => Math.hypot(p.x, p.y);
+const nrm = p => { const l = len(p) || 1; return { x: p.x / l, y: p.y / l }; };
+const mid = (p, q) => ({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
+const f1 = x => x.toFixed(1);
+
+function geometry() {
+  const al = clamp(view.al, 12, 78);
+  const loc = { A: { x: -cosd(al), y: 0 }, B: { x: 0, y: sind(al) }, C: { x: 0, y: 0 } };
+  const t = view.rot * RAD, ct = Math.cos(t), st = Math.sin(t);
+  const mx = Math.abs(view.mx) < 0.04 ? 0.04 * (Math.sign(view.mx) || 1) : view.mx;
+  // zrcadlení → otočení → převod na obrazovku (osa y míří dolů)
+  const T = p => { const x = p.x * mx, y = p.y; return { x: x * ct - y * st, y: -(x * st + y * ct) }; };
+  return { A: T(loc.A), B: T(loc.B), C: T(loc.C) };
+}
+
+function draw() {
+  const R = S.R;
+  const W = board.clientWidth, Hh = board.clientHeight;
+  if (!R || !W || !Hh) return;
+  svg.setAttribute('viewBox', `0 0 ${W} ${Hh}`);
+  const small = W < 600;
+  const DIM = small ? 12 : 18;     // odsazení kóty od strany [px]
+  const GAP = small ? 6 : 10;      // mezera kóta → pole
+  const AGAP = small ? 17 : 25;    // mezera vrchol → pole úhlu
+  const LAB = small ? 11 : 13;     // vzdálenost písmene vrcholu od vrcholu
+  const MARGIN = 8;
+  const g = geometry();
+
+  // Prvky, které se musí vejít do plochy: b = bod trojúhelníku (škáluje se), o = posun v px, hw/hh = půl rozměru
+  const items = [];
+  ['A', 'B', 'C'].forEach(V => items.push({ b: g[V], o: { x: 0, y: 0 }, hw: 0, hh: 0 }));
+  const sideInfo = {}, angInfo = {};
+  for (const k of ['a', 'b', 'c']) {
+    const [pN, qN, oN] = SIDES[k], P = g[pN], Q = g[qN], O = g[oN];
+    const M = mid(P, Q), u = nrm(sub(Q, P));
+    let n = { x: -u.y, y: u.x };
+    if (dot(n, sub(M, O)) < 0) n = mul(n, -1);            // normála ven z trojúhelníku
+    const el = FIELDS[k].root, hw = el.offsetWidth / 2, hh = el.offsetHeight / 2;
+    const sup = hw * Math.abs(n.x) + hh * Math.abs(n.y);  // jak daleko sahá pole ve směru normály
+    sideInfo[k] = { P, Q, n };
+    items.push({ b: M, o: mul(n, DIM + GAP + sup), hw, hh, k });
+    items.push({ b: P, o: mul(n, DIM + 6), hw: 0, hh: 0 }, { b: Q, o: mul(n, DIM + 6), hw: 0, hh: 0 });
+  }
+  const outDir = V => {                                   // vnější osa úhlu ve vrcholu V
+    const [, n1, n2] = V === 'C' ? ['C', 'A', 'B'] : ANGLES[V === 'A' ? 'al' : 'be'];
+    const u1 = nrm(sub(g[n1], g[V])), u2 = nrm(sub(g[n2], g[V]));
+    return { u1, u2, d: nrm(mul(add(u1, u2), -1)) };
+  };
+  for (const k of ['al', 'be']) {
+    const V = ANGLES[k][0], { u1, u2, d } = outDir(V);
+    const el = FIELDS[k].root, hw = el.offsetWidth / 2, hh = el.offsetHeight / 2;
+    const sup = hw * Math.abs(d.x) + hh * Math.abs(d.y);
+    angInfo[k] = { V, u1, u2 };
+    items.push({ b: g[V], o: mul(d, AGAP + sup), hw, hh, k });
+  }
+  const dirs = { A: outDir('A').d, B: outDir('B').d, C: outDir('C').d };
+  ['A', 'B', 'C'].forEach(V => items.push({ b: g[V], o: mul(dirs[V], LAB), hw: 7, hh: 8 }));
+
+  // Největší měřítko, při kterém se vše vejde (bisekce)
+  const bbox = s => {
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const it of items) {
+      const cx = it.b.x * s + it.o.x, cy = it.b.y * s + it.o.y;
+      x0 = Math.min(x0, cx - it.hw); x1 = Math.max(x1, cx + it.hw);
+      y0 = Math.min(y0, cy - it.hh); y1 = Math.max(y1, cy + it.hh);
+    }
+    return { x0, x1, y0, y1 };
+  };
+  let lo = 0, hi = 6000;
+  for (let i = 0; i < 40; i++) {
+    const m = (lo + hi) / 2, bb = bbox(m);
+    if (bb.x1 - bb.x0 <= W - 2 * MARGIN && bb.y1 - bb.y0 <= Hh - 2 * MARGIN) lo = m; else hi = m;
+  }
+  const sc = Math.max(lo, 30), bb = bbox(sc);
+  const sx = W / 2 - (bb.x0 + bb.x1) / 2, sy = Hh / 2 - (bb.y0 + bb.y1) / 2;
+  const P = p => ({ x: p.x * sc + sx, y: p.y * sc + sy });  // bod → pixely
+  const A = P(g.A), B = P(g.B), C = P(g.C);
+  const st = k => 'st-' + ((R.fields[k] && R.fields[k].st) || 'empty');
+
+  let h = `<polygon class="tri" points="${f1(A.x)},${f1(A.y)} ${f1(B.x)},${f1(B.y)} ${f1(C.x)},${f1(C.y)}"/>`;
+
+  // Výška na přeponu a úseky
+  if (S.showH) {
+    const ab = sub(B, A), t = dot(sub(C, A), ab) / dot(ab, ab), D = add(A, mul(ab, t));
+    const uAB = nrm(ab), w = nrm(sub(C, D)), s7 = 7;
+    h += `<line class="hgt" x1="${f1(C.x)}" y1="${f1(C.y)}" x2="${f1(D.x)}" y2="${f1(D.y)}"/>`;
+    const m1 = add(D, mul(uAB, s7)), m2 = add(m1, mul(w, s7)), m3 = add(D, mul(w, s7));
+    h += `<path class="hmark" d="M${f1(m1.x)} ${f1(m1.y)}L${f1(m2.x)} ${f1(m2.y)}L${f1(m3.x)} ${f1(m3.y)}"/>`;
+    h += `<circle class="hdot" cx="${f1(D.x)}" cy="${f1(D.y)}" r="2.6"/>`;
+    if (R.status === 'ok') {
+      const v = R.vals;
+      // popisek posunutý od bodu pt ve směru dir tak, aby se celý text vešel vedle čáry
+      const lab = (sym, s2, val, pt, dir, gap) => {
+        const txt = ` = ${fmtFixed(val)}`, hw = (txt.length + 2) * 3.7, hh = 8;
+        const c0 = add(pt, mul(dir, gap + hw * Math.abs(dir.x) + hh * Math.abs(dir.y)));
+        return `<text class="hlab" x="${f1(c0.x)}" y="${f1(c0.y)}" text-anchor="middle" dominant-baseline="central"><tspan font-style="italic">${sym}</tspan><tspan dy="4" font-size="72%">${s2}</tspan><tspan dy="-4">${txt}</tspan></text>`;
+      };
+      // v_c vedle výšky, na stranu delšího úseku přepony (tam je víc místa)
+      const side = t > 0.5 ? mul(uAB, -1) : uAB;
+      if (len(sub(C, D)) > 40) h += lab('v', 'c', v.vc, mid(C, D), side, 4);
+      const inward = mul(sideInfo.c.n, -1);
+      if (len(sub(B, D)) > 80) h += lab('c', 'a', v.ca, mid(D, B), inward, 5);
+      if (len(sub(A, D)) > 80) h += lab('c', 'b', v.cb, mid(A, D), inward, 5);
+    }
+  }
+
+  // Strany a kóty
+  for (const k of ['a', 'b', 'c']) {
+    const { n } = sideInfo[k], p = P(sideInfo[k].P), q = P(sideInfo[k].Q);
+    h += `<line class="side k-${k}" x1="${f1(p.x)}" y1="${f1(p.y)}" x2="${f1(q.x)}" y2="${f1(q.y)}"/>`;
+    const p1 = add(p, mul(n, DIM)), q1 = add(q, mul(n, DIM)), u = nrm(sub(q1, p1)), pr = { x: -u.y, y: u.x };
+    const arrow = (tip, dir) => {        // šipka kóty: hrot v bodě tip, míří ve směru dir
+      const b0 = sub(tip, mul(dir, 8)), c1 = add(b0, mul(pr, 2.8)), c2 = sub(b0, mul(pr, 2.8));
+      return `<polygon points="${f1(tip.x)},${f1(tip.y)} ${f1(c1.x)},${f1(c1.y)} ${f1(c2.x)},${f1(c2.y)}"/>`;
+    };
+    h += `<g class="dim k-${k} ${st(k)}">`
+      + `<line x1="${f1(p.x + n.x * 3)}" y1="${f1(p.y + n.y * 3)}" x2="${f1(p.x + n.x * (DIM + 5))}" y2="${f1(p.y + n.y * (DIM + 5))}"/>`
+      + `<line x1="${f1(q.x + n.x * 3)}" y1="${f1(q.y + n.y * 3)}" x2="${f1(q.x + n.x * (DIM + 5))}" y2="${f1(q.y + n.y * (DIM + 5))}"/>`
+      + `<line x1="${f1(p1.x)}" y1="${f1(p1.y)}" x2="${f1(q1.x)}" y2="${f1(q1.y)}"/>`
+      + arrow(p1, mul(u, -1)) + arrow(q1, u) + `</g>`;
+  }
+
+  // Oblouky úhlů α, β
+  const legPx = Math.min(len(sub(A, C)), len(sub(B, C)), len(sub(A, B)));
+  const r = clamp(legPx * 0.28, 16, 38);
+  for (const k of ['al', 'be']) {
+    const { V, u1, u2 } = angInfo[k], O = P(g[V]);
+    const s1 = add(O, mul(u1, r)), s2 = add(O, mul(u2, r));
+    const sweep = (u1.x * u2.y - u1.y * u2.x) > 0 ? 1 : 0;
+    h += `<g class="arc k-${k} ${st(k)}">`
+      + `<path class="sec" d="M${f1(O.x)} ${f1(O.y)}L${f1(s1.x)} ${f1(s1.y)}A${f1(r)} ${f1(r)} 0 0 ${sweep} ${f1(s2.x)} ${f1(s2.y)}Z"/>`
+      + `<path class="arcl" d="M${f1(s1.x)} ${f1(s1.y)}A${f1(r)} ${f1(r)} 0 0 ${sweep} ${f1(s2.x)} ${f1(s2.y)}"/></g>`;
+  }
+  // Značka pravého úhlu u C
+  {
+    const { u1, u2 } = outDir('C'), s = clamp(legPx * 0.12, 9, 15);
+    const m1 = add(C, mul(u1, s)), m2 = add(m1, mul(u2, s)), m3 = add(C, mul(u2, s));
+    h += `<path class="rmark" d="M${f1(m1.x)} ${f1(m1.y)}L${f1(m2.x)} ${f1(m2.y)}L${f1(m3.x)} ${f1(m3.y)}"/>`;
+    const dc = add(C, mul(add(u1, u2), s * 0.5));
+    h += `<circle cx="${f1(dc.x)}" cy="${f1(dc.y)}" r="1.4" fill="var(--ink)"/>`;
+  }
+  // Písmena vrcholů
+  for (const V of ['A', 'B', 'C']) {
+    const pt = add(P(g[V]), mul(dirs[V], LAB));
+    h += `<text class="vlab" x="${f1(pt.x)}" y="${f1(pt.y)}">${V}</text>`;
+  }
+  layer.innerHTML = h;
+
+  // Pole posadit na spočítaná místa
+  for (const it of items) if (it.k) {
+    const pt = add(P(it.b), it.o);
+    FIELDS[it.k].root.style.left = f1(pt.x) + 'px';
+    FIELDS[it.k].root.style.top = f1(pt.y) + 'px';
+  }
+}
+
+/* ---------- Plynulá animace tvaru a natočení ---------- */
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+let raf = 0;
+function animate() {
+  if (raf) return;
+  const tick = () => {
+    const tAl = clamp(S.realAl, 12, 78), tRot = S.rot, tMx = S.mirror ? -1 : 1;
+    let moving = false;
+    if (reduceMotion.matches) { view.al = tAl; view.rot = tRot; view.mx = tMx; }
+    else {
+      const dA = tAl - view.al;
+      if (Math.abs(dA) > 0.03) { view.al += dA * 0.22; moving = true; } else view.al = tAl;
+      const dR = ((tRot - view.rot + 540) % 360) - 180;     // nejkratší cesta kolem dokola
+      if (Math.abs(dR) > 0.05) { view.rot = (view.rot + dR * 0.22 + 360) % 360; moving = true; } else view.rot = tRot;
+      const dM = tMx - view.mx;
+      if (Math.abs(dM) > 0.01) { view.mx += dM * 0.24; moving = true; } else view.mx = tMx;
+    }
+    draw();
+    raf = moving ? requestAnimationFrame(tick) : 0;
+  };
+  raf = requestAnimationFrame(tick);
+}
+
+/* ---------- 6) Ovládání ---------- */
+function saveSettings() {
+  try { localStorage.setItem('pt-nastaveni', JSON.stringify({ unit: S.unit, dec: S.dec, rot: S.rot, mirror: S.mirror, showH: S.showH })); } catch (e) {}
+}
+function loadSettings() {
+  try {
+    const o = JSON.parse(localStorage.getItem('pt-nastaveni') || 'null');
+    if (!o) return;
+    if (typeof o.dec === 'number') S.dec = clamp(o.dec, 2, 6);
+    if (typeof o.rot === 'number') S.rot = ((o.rot % 360) + 360) % 360;
+    S.mirror = !!o.mirror; S.showH = !!o.showH;
+  } catch (e) {}
+}
+function syncControls() {
+  $('#rot').value = Math.round(S.rot) % 360;
+  $('#rotOut').textContent = Math.round(S.rot) % 360 + '°';
+  $('#mirror').setAttribute('aria-pressed', String(S.mirror));
+  $('#showH').checked = S.showH;
+  $('#dec').value = String(S.dec);
+  $('#unit').value = S.unit;
+}
+const norm360 = x => ((x % 360) + 360) % 360;
+function setRot(deg) { S.rot = norm360(deg); syncControls(); saveSettings(); animate(); }
+
+// Psaní do polí
+for (const k of KEYS) {
+  const F = FIELDS[k];
+  F.input.addEventListener('input', () => {
+    const f = S.inp[k];
+    f.text = F.input.value; f.num = parseNum(F.input.value); f.t = ++S.clock;
+    if (S.preset) { S.preset = null; $('#preset').value = ''; }
+    update();
+  });
+  F.input.addEventListener('focus', () => {
+    board.dataset.hl = k;
+    requestAnimationFrame(() => F.input.select());       // označit obsah → psaním se rovnou přepíše
+  });
+  F.input.addEventListener('blur', () => { delete board.dataset.hl; update(); });
+  F.root.addEventListener('mouseenter', () => { board.dataset.hl = k; });
+  F.root.addEventListener('mouseleave', () => {
+    const a = document.activeElement;
+    if (a && a.id && a.id.startsWith('in-')) board.dataset.hl = a.id.slice(3); else delete board.dataset.hl;
+  });
+}
+
+// Natočení
+$('#rotL').addEventListener('click', () => setRot(S.rot + 90));
+$('#rotR').addEventListener('click', () => setRot(S.rot - 90));
+$('#rot').addEventListener('input', e => { S.rot = +e.target.value; view.rot = S.rot; syncControls(); draw(); saveSettings(); });
+$('#mirror').addEventListener('click', () => { S.mirror = !S.mirror; syncControls(); saveSettings(); animate(); });
+$('#resetView').addEventListener('click', () => { S.mirror = false; setRot(0); });
+$('#hypDown').addEventListener('click', () => {
+  // natočit tak, aby přepona AB byla vodorovně a vrchol C nad ní
+  const al = clamp(S.realAl, 12, 78), mx = S.mirror ? -1 : 1;
+  const A = { x: -cosd(al) * mx, y: 0 }, B = { x: 0, y: sind(al) };
+  let rot = -Math.atan2(B.y - A.y, B.x - A.x) / RAD;      // otočí AB do vodorovné polohy
+  const t = rot * RAD, Cy = -(A.x) * Math.sin(t) + (-A.y) * Math.cos(t); // výška C nad přímkou AB
+  if (Cy < 0) rot += 180;
+  setRot(Math.round(rot * 10) / 10);
+});
+$('#showH').addEventListener('change', e => { S.showH = e.target.checked; saveSettings(); draw(); });
+$('#clear').addEventListener('click', () => {
+  KEYS.forEach(k => { S.inp[k] = { text: '', num: NaN, t: 0 }; FIELDS[k].input.value = ''; });
+  S.preset = null; $('#preset').value = '';
+  update();
+  FIELDS.a.input.focus();
+});
+
+// Otáčení tažením myši (na dotykových zařízeních zůstává posouvání stránky, otáčí se posuvníkem)
+let drag = null;
+board.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'touch' || e.button !== 0 || e.target.closest('.field')) return;
+  const r = board.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  drag = { cx, cy, a0: Math.atan2(e.clientY - cy, e.clientX - cx), rot0: S.rot };
+  board.setPointerCapture(e.pointerId);
+  board.classList.add('dragging');
+  e.preventDefault();
+});
+board.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const a = Math.atan2(e.clientY - drag.cy, e.clientX - drag.cx);
+  let rot = norm360(drag.rot0 - (a - drag.a0) / RAD);     // na obrazovce roste úhel po směru hodinek
+  const snap = Math.round(rot / 15) * 15;
+  if (Math.abs(rot - snap) < 3) rot = norm360(snap);      // přichycení po 15°
+  S.rot = rot; view.rot = rot;
+  syncControls(); draw();
+});
+const endDrag = () => { if (!drag) return; drag = null; board.classList.remove('dragging'); saveSettings(); };
+board.addEventListener('pointerup', endDrag);
+board.addEventListener('pointercancel', endDrag);
+
+// Nastavení v razítku
+$('#unit').addEventListener('input', e => { S.unit = e.target.value; saveSettings(); update(); });
+$('#dec').addEventListener('change', e => { S.dec = +e.target.value; saveSettings(); update(); });
+$('#preset').addEventListener('change', e => { if (e.target.value) applyPreset(e.target.value); else { S.preset = null; update(); } });
+
+function applyPreset(id) {
+  const p = PRESETS[id];
+  KEYS.forEach(k => { S.inp[k] = { text: '', num: NaN, t: 0 }; FIELDS[k].input.value = ''; });
+  for (const [k, txt] of Object.entries(p.vals)) {
+    S.inp[k] = { text: txt, num: parseNum(txt), t: ++S.clock };
+    FIELDS[k].input.value = txt;
+  }
+  S.unit = p.unit; S.preset = id;
+  syncControls(); $('#preset').value = id;
+  saveSettings(); update();
+}
+
+// Kopírování postupu do schránky (Markdown + LaTeX pro Obsidian)
+$('#copy').addEventListener('click', () => {
+  const md = buildMarkdown(S.R), btn = $('#copy'), fb = $('#copyFallback');
+  const done = () => { const t = btn.textContent; btn.textContent = 'Zkopírováno'; setTimeout(() => btn.textContent = t, 1600); };
+  const fallback = () => { fb.hidden = false; fb.value = md; fb.focus(); fb.select(); btn.textContent = 'Označeno – zkopíruj ⌘C / Ctrl+C'; };
+  try { navigator.clipboard.writeText(md).then(() => { fb.hidden = true; done(); }, fallback); } catch (e) { fallback(); }
+});
+
+/* ---------- Start ---------- */
+loadSettings();
+syncControls();
+applyPreset('stena');                  // otevřít s ukázkou
+view.al = clamp(S.realAl, 12, 78); view.rot = S.rot; view.mx = S.mirror ? -1 : 1;
+draw();
+new ResizeObserver(() => draw()).observe(board);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => draw());
+</script>
+
+</body>
+</html>
